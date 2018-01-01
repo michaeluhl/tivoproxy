@@ -1,4 +1,3 @@
-import json
 import re
 
 from fuzzywuzzy import fuzz, process
@@ -67,5 +66,5 @@ class TiVoProxy(ServedObject):
             if resp['type'] == 'success':
                 result['result'] = {'status': 'success'}
                 return result
-        result['error'] = 'An unknown error has occured.'
+        result['error'] = 'An unknown error has occurred.'
         return result
