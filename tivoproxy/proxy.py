@@ -59,12 +59,17 @@ class TiVoProxy(ServedObject):
             self.channels = ChannelCache(hd_only=True)
             self.channels.fill(mind.channel_search(no_limit=True))
 
-    def do_pause(self):
-        result = {'type': 'response', 'cmd': 'pause'}
-        with self.manager.mind() as mind:
-            resp = mind.send_key(api.RemoteKey.pause)
-            if resp['type'] == 'success':
-                result['result'] = {'status': 'success'}
-                return result
-        result['error'] = 'An unknown error has occurred.'
-        return result
+    def do_remote_key(self, key):
+        result = {'type': 'response', 'cmd': 'remote_key'}
+        try:
+            keycode = api.RemoteKey[key]
+            with self.manager.mind() as mind:
+                response = mind.send_key(key_event=keycode)
+                if response['type'] == 'success':
+                    result['result'] = {'key': key, 'status': 'success'}
+                    return result
+            result['error'] = 'An unknown error has occurred.'
+            return result
+        except KeyError as ke:
+            result['error'] = 'Key ({}) is not a valid key code.'.format(key)
+            return result
