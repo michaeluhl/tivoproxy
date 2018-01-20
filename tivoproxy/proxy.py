@@ -32,7 +32,7 @@ class ChannelCache(object):
             coll_f = {k: v for k, v in coll_f.items() if v['isHdtv']}
         if unused_refiners:
             coll_f = {k: v for k, v in coll_f.items() if not any(ss in k.lower() for ss in unused_refiners)}
-        best_matches = process.extractBests(name, coll_f.keys(), scorer=fuzz.token_set_ratio)
+        best_matches = process.extractBests(name, coll_f.keys(), scorer=fuzz.ratio)
         return best_matches
 
     def get_by_name(self, name, prefer_hd=False):
@@ -55,9 +55,11 @@ class TiVoProxy(ServedObject):
                                        cert_password=tp_config['CERT_PWD'],
                                        address=tp_config['TIVO_ADDR'],
                                        credential=rpc.MRPCCredential.new_mak(tp_config['TIVO_MAK']))
+        print('Caching Channel Information...')
         with self.manager.mind() as mind:
             self.channels = ChannelCache(hd_only=True)
             self.channels.fill(mind.channel_search(no_limit=True))
+        print('Loaded.')
 
     def do_remote_key(self, key):
         result = {'type': 'response', 'cmd': 'remote_key'}
@@ -73,3 +75,35 @@ class TiVoProxy(ServedObject):
         except KeyError as ke:
             result['error'] = 'Key ({}) is not a valid key code.'.format(key)
             return result
+
+    def do_change_channel(self, channel_number=None, channel_name=None):
+        result = {'type': 'response', 'cmd': 'change_channel'}
+        if (channel_number and channel_name) or (not channel_number and not channel_name):
+            result['error'] = 'Specify either channel_num or channel_name, not both.'
+            return result
+        specifier_type = 'channel_number' if channel_number else 'channel_name'
+        channel = None
+        if channel_number:
+            try:
+                channel = self.channels.get_by_number(channel_number)
+            except KeyError as ke:
+                result['error'] = 'No channel matching number: {}'.format(channel_number)
+                return result
+        else:
+            chan_affl, affl_rank = self.channels.get_by_affiliate(channel_name)[0]
+            chan_name, name_rank = self.channels.get_by_name(channel_name)[0]
+            if max([affl_rank, name_rank]) < 50:
+                result['error'] = 'No good matches for channel: {}'.format(channel_name)
+                return result
+            channel = self.channels.by_name[chan_name]
+            if affl_rank > name_rank:
+                channel = self.channels.by_affiliate[chan_affl]
+        print(specifier_type, channel['name'], channel['channelId'])
+        with self.manager.mind() as mind:
+            response = mind.change_channel(channel['channelId'])
+        result['result'] = {'status': 'success'}
+        if specifier_type == 'channel_number':
+            result['result']['channel_number'] = channel_number
+        else:
+            result['result']['channel_name'] = channel_name
+        return result
