@@ -61,17 +61,34 @@ class TiVoProxy(ServedObject):
             self.channels.fill(mind.channel_search(no_limit=True))
         print('Loaded.')
 
-    def do_remote_key(self, key):
+    def do_remote_key(self, key, value=None):
         result = {'type': 'response', 'cmd': 'remote_key'}
+        print(key, value)
         try:
-            keycode = api.RemoteKey[key]
             with self.manager.mind() as mind:
-                response = mind.send_key(key_event=keycode)
-                if response['type'] == 'success':
-                    result['result'] = {'key': key, 'status': 'success'}
-                    return result
-            result['error'] = 'An unknown error has occurred.'
-            return result
+                if key == 'string' and value:
+                    for c in value.lower():
+                        response = {'type': 'success'}
+                        if c.isalpha():
+                            response = mind.send_key(key_event='ascii', value=ord(c))
+                        elif c.isdigit():
+                            response = mind.send_key(key_event='num' + c)
+                        elif c == ' ':
+                            response = mind.send_key(key_event=api.RemoteKey.forward)
+                        if response['type'] != 'success':
+                            result['error'] = 'An unknown error has occurred.'
+                            print(result)
+                            return result
+                else:
+                    response = mind.send_key(key_event=api.RemoteKey[key])
+                    if response['type'] != 'success':
+                        result['error'] = 'An unknown error has occurred.'
+                        print(result)
+                        return result
+                result['result'] = {'key': key, 'status': 'success'}
+                if value:
+                    result['result']['value'] = value
+                return result
         except KeyError as ke:
             result['error'] = 'Key ({}) is not a valid key code.'.format(key)
             return result
