@@ -1,3 +1,4 @@
+import json
 import re
 
 from fuzzywuzzy import fuzz, process
@@ -55,11 +56,26 @@ class TiVoProxy(ServedObject):
                                        cert_password=tp_config['CERT_PWD'],
                                        address=tp_config['TIVO_ADDR'],
                                        credential=rpc.MRPCCredential.new_mak(tp_config['TIVO_MAK']))
-        print('Caching Channel Information...')
-        with self.manager.mind() as mind:
-            self.channels = ChannelCache(hd_only=True)
-            self.channels.fill(mind.channel_search(no_limit=True))
-        print('Loaded.')
+        self.channels = ChannelCache(hd_only=True)
+        try:
+            with open(tp_config['CHAN_CACHE_FILE'], 'rt') as cache:
+                channel_data = json.load(cache)
+                print('Loading Channel Information from cache file...')
+                self.channels.fill(channel_list=channel_data)
+                print('...loaded.')
+        except (KeyError, FileNotFoundError, json.JSONDecodeError):
+            print('No/Invalid Cache File or Reload Requested.')
+            print('Loading Channel Information from TiVo...')
+            with self.manager.mind() as mind:
+                channel_data = mind.channel_search(no_limit=True)
+                self.channels.fill(channel_list=channel_data)
+                if 'CHAN_CACHE_FILE' in tp_config:
+                    print('Saving Cache...')
+                    with open(tp_config['CHAN_CACHE_FILE'], 'wt') as cache:
+                        json.dump(channel_data, cache)
+                    print('...Saved.')
+            print('Loaded.')
+
 
     def do_remote_key(self, key, value=None):
         result = {'type': 'response', 'cmd': 'remote_key'}
